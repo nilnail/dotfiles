@@ -16,26 +16,19 @@ in
     nix = {
       binaryCaches = [ "https://nix-gaming.cachix.org" ];
       binaryCachePublicKeys = [ "nix-gaming.cachix.org-1:nbjlureqMbRAxR1gJ/f3hxemL9svXaZF/Ees8vCUUs4=" ];
+      autoOptimiseStore = true;
+      gc = {
+        automatic = true;
+        dates = "weekly";
+        options = "--delete-older-than 30d";
+      };
     };
 
     nixpkgs.config = {
       allowUnfree = true;
       };
 
-  programs.dconf.enable = true;
-  
-  programs.steam.enable = true;
-
-  nix.autoOptimiseStore = true;
-  nix.gc = {
-    automatic = true;
-    dates = "weekly";
-    options = "--delete-older-than 30d";
-  };
-
-  services.flatpak.enable = true;
-  
-  # Configure your filesystems
+  ## FILESYSTEMS 
   fileSystems = {
     "/".label = "nixos";
     "/home/neil".label = "home";
@@ -44,80 +37,88 @@ in
     "/home/neil/extra".label = "bulk";
   };
   
-  # Use the systemd-boot EFI boot loader
-  boot.loader.systemd-boot.enable = true;
-  boot.loader.efi.canTouchEfiVariables = true;
+  boot = {
+    loader.systemd-boot.enable = true;
+    loader.efi.canTouchEfiVariables = true;
+    kernelPackages = with pkgs; linuxKernel.packages.linux_xanmod_latest;
+    extraModulePackages = [
+      config.boot.kernelPackages.v4l2loopback
+    ];
+    kernelModules = [
+      "v4l2loopback"
+    ];
+    initrd.kernelModules = [
+      "amdgpu"
+    ];
 
-  networking.hostName = "neilspc"; # Define your hostname.
-  # networking.wireless.enable = true;  # Enables wireless support via wpa_supplicant.
+  };
 
-  # Set your time zone.
   time.timeZone = "America/Toronto";
 
-  # The global useDHCP flag is deprecated, therefore explicitly set to false here.
-  # Per-interface useDHCP will be mandatory in the future, so this generated config
-  # replicates the default behaviour.
-  networking.useDHCP = false;
-  networking.interfaces.enp8s0.useDHCP = true;
-
-  # Configure network proxy if necessary
-  # networking.proxy.default = "http://user:password@proxy:port/";
-  # networking.proxy.noProxy = "127.0.0.1,localhost,internal.domain";
-
-  # Select internationalisation properties.
-  # i18n.defaultLocale = "en_US.UTF-8";
-  # console = {
-  #   font = "Lat2-Terminus16";
-  #   keyMap = "us";
-  # };
-
-  # Enable the X11 windowing system.
-  # services.xserver.enable = true;
-
-  hardware.opengl = {
-    enable = true;
-    driSupport = true;
-    driSupport32Bit = true;
+  networking = {
+    useDHCP = false;
+    firewall.enable = false;
+    interfaces.enp8s0.useDHCP = true;
+    hostName = "neilspc"; # Define your hostname.
   };
   
-  hardware.opengl.extraPackages = with pkgs; [
-    rocm-opencl-icd
-    rocm-opencl-runtime
-    clinfo
-  ];
-  
-hardware.opentabletdriver = {
-    enable = true;
-    daemon.enable = true;
-    package = pkgs.opentabletdriver;
-};
-
-  # Configure keymap in X11
-  # services.xserver.layout = "us";
-  # services.xserver.xkbOptions = "eurosign:e";
-
-  # Enable CUPS to print documents.
-  services.printing.enable = true;
-
-  # Enable sound.
-  sound.enable = true;
-  security.rtkit.enable = true;
-  services.pipewire = {
-    enable = true;
-    alsa.enable = true;
-    alsa.support32Bit = true;
-    pulse.enable = true;
-  };
-  
-  services.pipewire = {
-    config.pipewire = {
-      "context.properties" = {
-        "link.max-buffers" = 64;
-        "log.level" = 2;
-        "default.clock.rate" = 384000;
-      };
+  hardware = {
+    opengl = {
+      enable = true;
+      driSupport = true;
+      driSupport32Bit = true;
+      extraPackages = with pkgs; [
+        rocm-opencl-icd
+        rocm-opencl-runtime
+        clinfo
+      ];
+    };
+    opentabletdriver = {
+        enable = true;
+        daemon.enable = true;
+        package = pkgs.opentabletdriver;
     };
   };
+
+
+  services = {
+    dbus.enable = true;
+    flatpak.enable = true;
+    printing.enable = true;
+    pipewire = {
+      enable = true;
+      alsa.enable = true;
+      alsa.support32Bit = true;
+      pulse.enable = true;
+      config.pipewire = {
+            "context.properties" = {
+              "link.max-buffers" = 64;
+              "log.level" = 2;
+              "default.clock.rate" = 384000;
+            };
+          };
+    };
+    greetd = {
+        enable = true;
+        package = pkgs.greetd.greetd;
+        settings = {
+          default_session = {
+            command = "${pkgs.greetd.greetd}/bin/agreety --cmd sway";
+          };
+          initial_session = {
+            command = "sway";
+            user = "neil";
+          };
+        };
+      };
+
+    gvfs.enable = true;
+    tumbler.enable = true;
+  };
+
+  sound.enable = true;
+  security.rtkit.enable = true;
+  
 
   users.users.neil = {
     isNormalUser = true;
@@ -125,244 +126,224 @@ hardware.opentabletdriver = {
     extraGroups = [ "wheel" "dialout" ];
   };
 
-  boot.kernelPackages = with pkgs; linuxKernel.packages.linux_xanmod;
-
-  boot.extraModulePackages = [
-    config.boot.kernelPackages.v4l2loopback
-  ];
-
-  boot.kernelModules = [
-    "v4l2loopback"
-  ];
-
-
-  boot.initrd.kernelModules = [
-    "amdgpu"
-  ];
-
   fonts.fonts = with pkgs; [
     nerdfonts
   ];
 
-  ## PACKAGES
-
-  environment.systemPackages = with pkgs; [
-    vim
-    rclone
-    nwg-drawer
-    rofi-wayland
-    vulkan-validation-layers
-    glib
-    unzip
-    lsof
-    tor-browser-bundle-bin
-    dbus-glib
-    wget
-    freecad
-    kicad
-    dbus
-    ripcord
-    bookworm
-    koreader
-    fbreader
-    libsForQt5.qtstyleplugin-kvantum
-    libsForQt5.qtstyleplugins
-    qtstyleplugin-kvantum-qt4
-    pipewire-media-session
-    sway
-    rnix-lsp
-    clojure-lsp
-    texlab
-    nodePackages.npm
-    nodePackages.typescript
-    nodePackages.typescript-language-server
-    nodePackages.bash-language-server
-    obs-studio
-    obs-studio-plugins.wlrobs
-    obs-studio-plugins.obs-gstreamer
-    obs-studio-plugins.obs-websocket
-    beefi
-    pipewire
-    linuxKernel.kernels.linux_5_15
-    linuxKernel.kernels.linux_xanmod
-    pciutils
-    polkit_gnome
-    firefox-wayland
-   # unstable.osu-lazer
-    # unstable.armcord
-    appimage-run
-    icu
-    (discord.override { nss = pkgs.nss; })
-    gnome.nautilus
-    gnome.gnome-disk-utility
-    gnome.gnome-system-monitor
-    gnome.gnome-tweaks
-    yarn
-    yarn2nix
-    nodePackages.yarn
-    evince
-    lxappearance
-    juno-theme
-    gimp
-    mypaint
-    mypaint-brushes
-    brightnessctl
-    pavucontrol
-    image-roll
-    bitwarden
-    polymc
-    qt5ct
-    jdk
-    mesa
-    helvum
-    pmount
-    chromium
-    prusa-slicer
-    mpdevil
-    findutils
-    ripgrep
-    openssl
-    lutris
-    obs-studio
-    blender
-    gnome.eog
-    kdenlive
-    wineWowPackages.stagingFull
-    #winePackages.staging
-    gamemode
-    gnome.zenity
-    winetricks
-    gst_all_1.gstreamer
-    mono
-    autoconf
-    perl
-    opentabletdriver
-    mpd-mpris
-    playerctl
-    transmission
-    transmission-gtk
-    mpv
-    xfce.thunar
-    xfce.xfconf
-    xfce.exo
-    xfce.catfish
-    fsearch
-    gvfs
-    gnome.gvfs
-    betterdiscordctl
-    glfw-wayland
-    qalculate-gtk
-    nix-index
-    ghc
-    ghcid
-    #haskellPackages.ghc_9_2_1
-    ghc_filesystem
-    cabal2nix
-    cabal-install
-    haskellPackages.Cabal_3_6_3_0
-    audacity-gtk3
-    eww-wayland
-    lollypop
-    easytag
-    gnome.gnome-control-center
-    parted
-    gparted
-    tauon
-    clementine
-    deadbeef-with-plugins
-    gnome.file-roller
-    gnumake
-    gcc
-    xine-lib
-    rhythmbox
-    avizo
-    celluloid
-    (let
-  my-python-packages = python-packages: with python-packages; [
-    pillow
-    pip
-    pipBuildHook
-    pipInstallHook
-    pandas
-    backports_csv
-    wineWowPackages.fonts
-    noto-fonts-cjk
-    corefonts
-    vistafonts
-    ipafont
-    font-manager
-    python-lsp-server
-
-     #other python packages you want
-  ];
-  python-with-my-packages = python3.withPackages my-python-packages;
-in
-python-with-my-packages)
-    xf86_input_wacom
-    libwacom
-    zeroadPackages.zeroad-unwrapped
-    zeroadPackages.zeroad-data
-    libnotify
-    bottles
-    ipafont
-    ipaexfont
-    noto-fonts-cjk
-    hanazono
-    libsForQt5.ark
-    rar
-    superTuxKart
-    tree
-    gst_all_1.gstreamer
-    gst_all_1.gst-vaapi
-    libgudev
-    speex
-    xorg.xset
-    neofetch
-    gnome.gnome-weather
-    xdg-utils
-    arduino
-    arduino-core
-    arduino-mk
-    arduino-cli
-    evolution
-    (let dbus-sway-environment = pkgs.writeTextFile {
-    name = "dbus-sway-environment";
-    destination = "/bin/dbus-sway-environment";
-    executable = true;
-
-    text = ''
-  dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=sway
-  systemctl --user stop pipewire pipewire-media-session xdg-desktop-portal xdg-desktop-portal-wlr
-  systemctl --user start pipewire pipewire-media-session xdg-desktop-portal xdg-desktop-portal-wlr
-      '';
-         };
-         in dbus-sway-environment)  
-  ];
-
-
-
-
-  programs.sway = {
+  programs = {
+    sway = {
     enable = true;
-    wrapperFeatures.gtk = true;
-    extraPackages = with pkgs; [
-      swaylock
-      swayidle
-      wl-clipboard
-      mako
-      dmenu
-      wofi
-      copyq
-      waybar
-      git
-      killall
-      sway-contrib.grimshot
-      grim
-      wev
-      slurp
-      xorg.xlsclients
-      mplayer
+      wrapperFeatures.gtk = true;
+      extraPackages = with pkgs; [
+        swaylock
+        swayidle
+        wl-clipboard
+        mako
+        dmenu
+        waybar
+        git
+        killall
+        sway-contrib.grimshot
+        grim
+        wev
+        slurp
+        xorg.xlsclients
+        eww-wayland
+      ];
+    };
+    dconf.enable = true;
+    steam.enable = true;
+    gamemode.enable = true;
+    mtr.enable = true;
+    gnupg.agent = {
+      enable = true;
+      enableSSHSupport = true;
+    };
+  };
+  
+  ## PACKAGES
+  ## ENVIRONMENT VARIABLES
+
+  environment = {
+    variables = {
+      MOZ_ENABLE_WAYLAND="1";
+      QT_QPA_PLATFORM="wayland";
+      SDL_VIDEODRIVER="wayland";
+      NIXPKGS_ALLOW_UNFREE="1";
+     SWAY_CURSOR_THEME="Adwaita";
+  #    QT_STYLE_OVERRIDE = "kvantum";
+  #    QT_QPA_PLATFORMTHEME = "plastique";
+
+    };
+    sessionVariables = {
+      XDG_CURRENT_DESKTOP="sway";
+      XDG_SESSION_TYPE="wayland";
+      XDG_SESSION_DESKTOP="sway";
+      DEFAULT_BROWSER="${pkgs.firefox}/bin/firefox";
+      BROWSER="${pkgs.firefox}/bin/firefox";
+    };
+    systemPackages = with pkgs; [
+      vim
+      rclone
+      rofi-wayland
+      vulkan-validation-layers
+      glib
+      unzip
+      lsof
+      tor-browser-bundle-bin
+      dbus-glib
+      wget
+      freecad
+      kicad
+      dbus
+      ripcord
+      libsForQt5.qtstyleplugin-kvantum
+      libsForQt5.qtstyleplugins
+      qtstyleplugin-kvantum-qt4
+      pipewire-media-session
+      sway
+      rnix-lsp
+      clojure-lsp
+      texlab
+      nodePackages.npm
+      nodePackages.typescript
+      nodePackages.typescript-language-server
+      nodePackages.bash-language-server
+      obs-studio
+      obs-studio-plugins.wlrobs
+      obs-studio-plugins.obs-gstreamer
+      obs-studio-plugins.obs-websocket
+      pipewire
+      linuxKernel.kernels.linux_5_15
+      linuxKernel.kernels.linux_xanmod
+      pciutils
+      polkit_gnome
+      firefox-wayland
+     # unstable.osu-lazer
+      # unstable.armcord
+      icu
+      (discord.override { nss = pkgs.nss; })
+      gnome.gnome-disk-utility
+      gnome.gnome-system-monitor
+      gnome.gnome-tweaks
+      yarn
+      yarn2nix
+      nodePackages.yarn
+      evince
+      juno-theme
+      gimp
+      mypaint
+      mypaint-brushes
+      brightnessctl
+      pavucontrol
+      image-roll
+      bitwarden
+      polymc
+      jdk
+      mesa
+      helvum
+      pmount
+      chromium
+      prusa-slicer
+      findutils
+      ripgrep
+      openssl
+      lutris
+      obs-studio
+      blender
+      gnome.eog
+      kdenlive
+      wineWowPackages.stagingFull
+      #winePackages.staging
+      gamemode
+      gnome.zenity
+      winetricks
+      gst_all_1.gstreamer
+      mono
+      autoconf
+      perl
+      opentabletdriver
+      mpd-mpris
+      playerctl
+      transmission
+      transmission-gtk
+      mpv
+      xfce.thunar
+      xfce.xfconf
+      xfce.exo
+      xfce.catfish
+      fsearch
+      gvfs
+      gnome.gvfs
+      betterdiscordctl
+      glfw-wayland
+      qalculate-gtk
+      nix-index
+      ghc
+      ghcid
+      #haskellPackages.ghc_9_2_1
+      ghc_filesystem
+      cabal2nix
+      cabal-install
+      haskellPackages.Cabal_3_6_3_0
+      audacity-gtk3
       eww-wayland
+      lollypop
+      easytag
+      gnome.gnome-control-center
+      parted
+      gparted
+      gnome.file-roller
+      gnumake
+      gcc
+      xine-lib
+      (let
+    my-python-packages = python-packages: with python-packages; [
+      pillow
+      pip
+      pipBuildHook
+      pipInstallHook
+      pandas
+      backports_csv
+      wineWowPackages.fonts
+      noto-fonts-cjk
+      corefonts
+      vistafonts
+      ipafont
+      font-manager
+      python-lsp-server
+
+       #other python packages you want
+    ];
+    python-with-my-packages = python3.withPackages my-python-packages;
+  in
+  python-with-my-packages)
+      xf86_input_wacom
+      libwacom
+      zeroadPackages.zeroad-unwrapped
+      zeroadPackages.zeroad-data
+      libnotify
+      ipafont
+      ipaexfont
+      noto-fonts-cjk
+      hanazono
+      libsForQt5.ark
+      rar
+      superTuxKart
+      tree
+      gst_all_1.gstreamer
+      gst_all_1.gst-vaapi
+      libgudev
+      speex
+      xorg.xset
+      neofetch
+      gnome.gnome-weather
+      xdg-utils
+      arduino
+      arduino-core
+      arduino-mk
+      arduino-cli
+      evolution
     ];
   };
 
@@ -376,7 +357,6 @@ python-with-my-packages)
   # ];
 
 
-  services.dbus.enable = true;
   xdg = {
     mime = {
       enable = true;
@@ -410,42 +390,6 @@ python-with-my-packages)
   };
   };
 
-  programs.gamemode.enable = true;
-
-  services.greetd = {
-    enable = true;
-    package = pkgs.greetd.greetd;
-    settings = {
-      default_session = {
-        command = "${pkgs.greetd.greetd}/bin/agreety --cmd sway";
-      };
-      initial_session = {
-        command = "sway";
-        user = "neil";
-      };
-    };
-  };
-
-  services.gvfs.enable = true;
-  services.tumbler.enable = true;
-
-  environment.variables = {
-    MOZ_ENABLE_WAYLAND="1";
-    QT_QPA_PLATFORM="wayland";
-    SDL_VIDEODRIVER="wayland";
-    NIXPKGS_ALLOW_UNFREE="1";
-   SWAY_CURSOR_THEME="Adwaita";
-#    QT_STYLE_OVERRIDE = "kvantum";
-#    QT_QPA_PLATFORMTHEME = "plastique";
-
-  };
-  environment.sessionVariables = {
-    XDG_CURRENT_DESKTOP="sway";
-    XDG_SESSION_TYPE="wayland";
-    XDG_SESSION_DESKTOP="sway";
-    DEFAULT_BROWSER="${pkgs.firefox}/bin/firefox";
-    BROWSER="${pkgs.firefox}/bin/firefox";
-  };
 
   qt5 = {
     enable = true;
@@ -453,57 +397,7 @@ python-with-my-packages)
     style = "adwaita-dark";
     };
 
-
-
-  programs.mtr.enable = true;
-  programs.gnupg.agent = {
-    enable = true;
-    enableSSHSupport = true;
-  };
-
-  # Enable touchpad support (enabled default in most desktopManager).
-  # services.xserver.libinput.enable = true;
-
-  # Define a user account. Don't forget to set a password with ‘passwd’.
-  # users.users.jane = {
-  #   isNormalUser = true;
-  #   extraGroups = [ "wheel" ]; # Enable ‘sudo’ for the user.
-  # };
-
-  # List packages installed in system profile. To search, run:
-  # $ nix search wget
-  # environment.systemPackages = with pkgs; [
-  #   vim # Do not forget to add an editor to edit configuration.nix! The Nano editor is also installed by default.
-  #   wget
-  #   firefox
-  # ];
-
-  # Some programs need SUID wrappers, can be configured further or are
-  # started in user sessions.
-  # programs.mtr.enable = true;
-  # programs.gnupg.agent = {
-  #   enable = true;
-  #   enableSSHSupport = true;
-  # };
-
-  # List services that you want to enable:
-
-  # Enable the OpenSSH daemon.
-  # services.openssh.enable = true;
-
-  # Open ports in the firewall.
-  # networking.firewall.allowedTCPPorts = [ ... ];
-  # networking.firewall.allowedUDPPorts = [ ... ];
-  # Or disable the firewall altogether.
-   networking.firewall.enable = false;
-
-  # This value determines the NixOS release from which the default
-  # settings for stateful data, like file locations and database versions
-  # on your system were taken. It‘s perfectly fine and recommended to leave
-  # this value at the release version of the first install of this system.
-  # Before changing this value read the documentation for this option
-  # (e.g. man configuration.nix or on https://nixos.org/nixos/options.html).
-  system.stateVersion = "22.05"; # Did you read the comment?
+  system.stateVersion = "22.05"; 
 
 
 ### HOME MANAGER
@@ -682,11 +576,13 @@ epkgs.org-roam
 (general-define-key
   :keymaps 'global
 "C-c r s" 'org-roam-node-find
+"C-c r r" 'rclone-sync
 "C-c r i" 'org-roam-node-insert)
 
 (general-define-key
   :keymaps 'org-mode-map
 "C-c r s" 'org-roam-node-find
+"C-c r r" 'rclone-sync
 "C-c r i" 'org-roam-node-insert)
 
 (use-package evil
@@ -720,6 +616,10 @@ epkgs.org-roam
 (use-package python-mode
   :mode "\\.py\\'")
 
+(use-package haskell-mode
+  :mode "\\.hs\\'"
+  :config (add-hook 'haskell-mode-hook 'interactive-haskell-mode))
+
 (use-package org
   :mode ("\\.org\\'" . org-mode))
 
@@ -727,6 +627,10 @@ epkgs.org-roam
 (setq fint-file-visit-truename t)
 (org-roam-db-autosync-mode)
 
+(defun rclone-sync ()
+"bisync the org-roam directory with the one on google drive"
+(interactive)
+  (shell-command "rclone bisync /home/neil/org-roam remote:org-roam/"))
         '';
     };
 
@@ -873,11 +777,6 @@ tab[visuallyselected] .tab-background::before,
 '';
       };
     };
-
-
-
-## EWW
-    #programs.eww.enable = true;
 
 ## SWAY
     wayland.windowManager.sway = {
@@ -1195,17 +1094,16 @@ Name=Discord
 Type=Application
 Version=1.4
 '';
-      ".config/rclone/rclone.conf".text =
-''
-[remote]
-type = drive
-client_id = 1084254172415-3jkv4kfegb2bmrohnpt4kba448rgugra.apps.googleusercontent.com
-client_secret = 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
-scope = drive
-token = {"access_token":"ya29.a0AVA9y1tggPkmYn-YUScUMqbNJkHNjjiHjjOy7LxPB13Uta-FaPGZgi5iZQJMe7lU-EopeeOOyN5CWu6TIu8dwdz7YhVo31CzKPRFbpgGdeIYPU9IXJLtGuyFNgKqCsBPiFa2SXmvF_QssaXZbWGkqvXLsuZ8aCgYKATASAQASFQE65dr8uhbGEkAoj00D7N1XelwHFA0163","token_type":"Bearer","refresh_token":"1//04U0pEKrAYzMzCgYIARAAGAQSNwF-L9IrcV-vjatokLGiJ7LkuNKLQQ5-fJ_BRQa1BYtRVWgw0HtvjpxPdhe6nWInUYWqW5PE40s","expiry":"2022-08-28T15:33:08.253251787-04:00"}
-team_drive = 
-
-'';
+#       ".config/rclone/rclone.conf".text =
+# ''
+# [remote]
+# type = drive
+# client_id = 1084254172415-3jkv4kfegb2bmrohnpt4kba448rgugra.apps.googleusercontent.com
+# client_secret = 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
+# scope = drive
+# token = {"access_token":"ya29.a0AVA9y1vEUkD6jfP7cyVQbqiQMr0p2DVHoBiwWfVysmW_t0pGLy65Nn34itIrSi5TajUtgBTViI35Pfwpt61AnbCqLM5_91WZZBn_4jz3UmOjT-qEmsvQkk3bTqWmnxN9FBa4ARaIwCsCUOku7F_IRennkwvIPQaCgYKATASAQASFQE65dr8iUgJb7CkEq5VecICtqrzvg0165","token_type":"Bearer","refresh_token":"1//04U0pEKrAYzMzCgYIARAAGAQSNwF-L9IrcV-vjatokLGiJ7LkuNKLQQ5-fJ_BRQa1BYtRVWgw0HtvjpxPdhe6nWInUYWqW5PE40s","expiry":"2022-08-30T13:16:02.93077183-04:00"}
+# team_drive =
+# '';
     };
   };
 
