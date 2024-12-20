@@ -1,112 +1,110 @@
-# Edit this configuration file to define what should be installed on
-# your system.  Help is available in the configuration.nix(5) man page
+#lpadmin -p laserjetV  -m laserjet.ppd -v parallel -D “HP LaserJet V” -L “Office 502/ Edit this configuration file to define what should be installed on
+#''; your system.  Help is available in the configuration.nix(5) man page
 # and in the NixOS manual (accessible by running ‘nixos-help’).
 
 { config, pkgs, lib, ... }:
 let
-  home-manager = builtins.fetchTarball "https://github.com/nix-community/home-manager/archive/release-22.05.tar.gz";
+  home-manager = builtins.fetchTarball "https://github.com/nix-community/home-manager/archive/release-24.05.tar.gz";
+  asahi-support = builtins.fetchTarball "https://github.com/tpwrules/nixos-apple-silicon/archive/main.tar.gz";
+  unstable = import <unstable> { config = {allowUnfree = true;};};
 in
 {
   imports =
     [ # Include the results of the hardware scan.
       ./hardware-configuration.nix
+      ./apple-silicon-support
+      #(import "${asahi-support}/apple-silicon-support")
       (import "${home-manager}/nixos")
     ];
 
-    nix = {
-      binaryCaches = [ "https://nix-gaming.cachix.org" ];
-      binaryCachePublicKeys = [ "nix-gaming.cachix.org-1:nbjlureqMbRAxR1gJ/f3hxemL9svXaZF/Ees8vCUUs4=" ];
-      autoOptimiseStore = true;
-      gc = {
-        automatic = true;
-        dates = "weekly";
-        options = "--delete-older-than 30d";
-      };
+  nix = {
+    settings = {
+      auto-optimise-store = true;
     };
-
-    nixpkgs.config = {
+    gc = {
+      automatic = true;
+      dates = "weekly";
+      options = "--delete-older-than 30d";
+    };
+    };
+  nixpkgs = {
+    config = {
+      packageOverrides = pkgs: { nur = import (builtins.fetchTarball "https://github.com/nix-community/NUR/archive/master.tar.gz") {inherit pkgs;};};
       allowUnfree = true;
-      };
-
-  ## FILESYSTEMS 
-  fileSystems = {
-    "/".label = "nixos";
-    "/home/neil".label = "home";
-    "/boot".label = "boot";
-    "/home/neil/bulk".label = "bulky";
-    "/home/neil/extra".label = "bulk";
+      allowBroken = true;
+      permittedInsecurePackages = [
+        "nix-2.15.3"
+      ];
+    };
   };
-  
+
   boot = {
     loader.systemd-boot.enable = true;
-    loader.efi.canTouchEfiVariables = true;
-    kernelPackages = with pkgs; linuxKernel.packages.linux_xanmod_latest;
-    extraModulePackages = [
-      config.boot.kernelPackages.v4l2loopback
-    ];
-    kernelModules = [
-      "v4l2loopback"
-    ];
-    initrd.kernelModules = [
-      "amdgpu"
-    ];
-
+    loader.efi.canTouchEfiVariables = false;
   };
 
+  fileSystems = {
+    "/".label = "nixos";
+    "/home".label = "home";
+  };
+  
+  
   time.timeZone = "America/Toronto";
 
   networking = {
-    useDHCP = false;
+    networkmanager.enable = true;
     firewall.enable = false;
-    interfaces.enp8s0.useDHCP = true;
-    hostName = "neilspc"; # Define your hostname.
+    hostName = "neilsmacbook"; # Define your hostname.
   };
-  
+
   hardware = {
-    opengl = {
+    bluetooth = {
       enable = true;
-      driSupport = true;
-      driSupport32Bit = true;
-      extraPackages = with pkgs; [
-        rocm-opencl-icd
-        rocm-opencl-runtime
-        clinfo
-      ];
+    };
+    asahi = {
+      enable = false;
+      withRust = false;
+      useExperimentalGPUDriver = false;
+      experimentalGPUInstallMode = "replace";
+    };
+    opengl = {
+      enable = false;
+      # extraPackages = [ pkgs.mesa-asahi-edge.drivers ];
     };
     opentabletdriver = {
-        enable = true;
+        enable = false;
         daemon.enable = true;
         package = pkgs.opentabletdriver;
     };
   };
 
-
   services = {
+    blueman.enable = true;
     dbus.enable = true;
-    flatpak.enable = true;
-    printing.enable = true;
+    flatpak.enable = false;
+    printing.enable = false;
+    printing.drivers = [pkgs.hplip pkgs.epson-escpr];
+    avahi = {
+      enable = true;
+      nssmdns4 = true;
+    };
+      
     pipewire = {
       enable = true;
       alsa.enable = true;
       alsa.support32Bit = true;
       pulse.enable = true;
-      config.pipewire = {
-            "context.properties" = {
-              "link.max-buffers" = 64;
-              "log.level" = 2;
-              "default.clock.rate" = 384000;
-            };
-          };
     };
     greetd = {
         enable = true;
         package = pkgs.greetd.greetd;
         settings = {
           default_session = {
-            command = "${pkgs.greetd.greetd}/bin/agreety --cmd sway";
+            command = "${pkgs.greetd.greetd}/bin/agreety ";
           };
           initial_session = {
-            command = "sway";
+            command = "${pkgs.sway}/bin/sway ";
+            # command = "sway";
             user = "neil";
           };
         };
@@ -116,51 +114,42 @@ in
     tumbler.enable = true;
   };
 
-  sound.enable = true;
-  security.rtkit.enable = true;
-  
+  # Enable touchpad support (enabled default in most desktopManager).
+  services.libinput.enable = true;
 
-  users.users.neil = {
-    isNormalUser = true;
-    password = "balls";
-    extraGroups = [ "wheel" "dialout" ];
+  security.rtkit.enable = true;
+
+  # Define a user account. Don't forget to set a password with ‘passwd’1
+  users = {
+    mutableUsers = false;
+    users = {
+      root = {
+        hashedPassword = "$6$dD.jU33HdH1vk3N4$qPepCTDgJln/E1nWrlsncWLNhewSj6J/6WUU21VZYjG4779JAFXcvaDXRHcKguG4daQHKxs5pLoD6F.grjxgv/";
+        extraGroups = ["wheel" "input" "dialout" "i2p"];
+      };
+      neil = {
+        isNormalUser = true;
+        hashedPassword = "$6$dD.jU33HdH1vk3N4$qPepCTDgJln/E1nWrlsncWLNhewSj6J/6WUU21VZYjG4779JAFXcvaDXRHcKguG4daQHKxs5pLoD6F.grjxgv/";
+        extraGroups = ["wheel" "dialout" "input" "i2p"];
+      };
+    };
   };
 
-  fonts.fonts = with pkgs; [
-    nerdfonts
+ 
+  fonts.packages = with pkgs; [
+    #nerdfonts
+    liberation_ttf
   ];
 
   programs = {
-    sway = {
-    enable = true;
-      wrapperFeatures.gtk = true;
-      extraPackages = with pkgs; [
-        swaylock
-        swayidle
-        wl-clipboard
-        mako
-        dmenu
-        waybar
-        git
-        killall
-        sway-contrib.grimshot
-        grim
-        wev
-        slurp
-        xorg.xlsclients
-        eww-wayland
-      ];
-    };
     dconf.enable = true;
-    steam.enable = true;
     gamemode.enable = true;
-    mtr.enable = true;
     gnupg.agent = {
       enable = true;
       enableSSHSupport = true;
     };
   };
-  
+ 
   ## PACKAGES
   ## ENVIRONMENT VARIABLES
 
@@ -168,9 +157,11 @@ in
     variables = {
       MOZ_ENABLE_WAYLAND="1";
       QT_QPA_PLATFORM="wayland";
-      SDL_VIDEODRIVER="wayland";
+     # SDL_VIDEODRIVER="wayland";
       NIXPKGS_ALLOW_UNFREE="1";
      SWAY_CURSOR_THEME="Adwaita";
+ #    WLR_RENDERER="vulkan";
+     LIBSEAT_BACKEND="logind";
   #    QT_STYLE_OVERRIDE = "kvantum";
   #    QT_QPA_PLATFORMTHEME = "plastique";
 
@@ -184,178 +175,176 @@ in
     };
     systemPackages = with pkgs; [
       vim
-      rclone
+      font-manager
+      #rclone
       rofi-wayland
-      vulkan-validation-layers
+      #unstable.niri
       glib
       unzip
       lsof
-      tor-browser-bundle-bin
       dbus-glib
       wget
-      freecad
-      kicad
+      busybox
+      #freecad
+     # kicad-small
       dbus
-      ripcord
-      libsForQt5.qtstyleplugin-kvantum
-      libsForQt5.qtstyleplugins
-      qtstyleplugin-kvantum-qt4
-      pipewire-media-session
-      sway
-      rnix-lsp
-      clojure-lsp
-      texlab
-      nodePackages.npm
-      nodePackages.typescript
-      nodePackages.typescript-language-server
-      nodePackages.bash-language-server
-      obs-studio
-      obs-studio-plugins.wlrobs
-      obs-studio-plugins.obs-gstreamer
-      obs-studio-plugins.obs-websocket
-      pipewire
-      linuxKernel.kernels.linux_5_15
-      linuxKernel.kernels.linux_xanmod
-      pciutils
-      polkit_gnome
-      firefox-wayland
-     # unstable.osu-lazer
-      # unstable.armcord
-      icu
-      (discord.override { nss = pkgs.nss; })
-      gnome.gnome-disk-utility
-      gnome.gnome-system-monitor
-      gnome.gnome-tweaks
-      yarn
-      yarn2nix
-      nodePackages.yarn
-      evince
-      juno-theme
-      gimp
-      mypaint
-      mypaint-brushes
-      brightnessctl
-      pavucontrol
-      image-roll
-      bitwarden
-      polymc
-      jdk
-      mesa
+      musl
+      glibc
+      lld
+      binutils
+      # qt6.qtwayland
+      # libsForQt5.qt5.qtwayland
+      # libsForQt5.qtstyleplugins
+      # texlab
+      # #obs-studio
+      # pipewire
+      # wireplumber
+      # pciutils
+      # polkit_gnome
+      # #firefox-wayland
+      # icu
+      # icu72
+      # baobab
+      # unstable.legcord
+      # dotool
+      # htop
+      # tetex
+      # cmake
+      # #librewolf
+      # tor
+      # planner
+      # taisei
+      # blueman
+      # system-config-printer
+      # wlroots
+      # libreoffice
+      #plover.dev
+      #nur.repos.darkkirb.plover
+      #nur.repos.federicoschonborn.gimp3
+      #unstable.grapejuice
+      #unstable.webcord
+      #unstable.wineWowPackages.waylandFull
+      #vkd3d
+      #vkd3d-proton
+      # seatd
+      # swaylock
+      # remmina
+      # swayidle
+      # wl-clipboard
+      # mako
+      # waybar
+      # git
+      # killall
+      # sway-contrib.grimshot
+      # grim
+      # wev
+      # slurp
+      # xorg.xlsclients
+      # #unstable.webcord
+      # libhandy
+      # keychain
+      # miniaudio
+      # libopus
+      # libsodium
+      # rnnoise
+      # foliate
+      # gnome-disk-utility
+      # gnome-online-accounts-gtk
+      # gnome-system-monitor
+      # gnome-clocks
+      # nodePackages.yarn
+      # evince
+      # gimp
+      # mypaint
+      # brightnessctl
+      # pavucontrol
+      #bitwarden-desktop
+      #lmms
+      #prismlauncher
       helvum
+   #   thunderbird
+      xorg.xkbcomp
+      xorg.xmodmap
       pmount
-      chromium
-      prusa-slicer
+      #chromium
+   #   prusa-slicer
       findutils
       ripgrep
       openssl
-      lutris
-      obs-studio
-      blender
-      gnome.eog
-      kdenlive
-      wineWowPackages.stagingFull
-      #winePackages.staging
+      #lutris
+      #blender
+      #kdenlive
       gamemode
-      gnome.zenity
-      winetricks
+      #winetricks
       gst_all_1.gstreamer
       mono
       autoconf
       perl
-      opentabletdriver
-      mpd-mpris
-      playerctl
-      transmission
-      transmission-gtk
-      mpv
+      #opentabletdriver
+   #   transmission_4-gtk
+      #mpv
+   #   svt-av1
+      libaom
+      dav1d
       xfce.thunar
       xfce.xfconf
       xfce.exo
       xfce.catfish
       fsearch
       gvfs
-      gnome.gvfs
-      betterdiscordctl
-      glfw-wayland
+      gvfs
       qalculate-gtk
       nix-index
-      ghc
-      ghcid
-      #haskellPackages.ghc_9_2_1
-      ghc_filesystem
-      cabal2nix
-      cabal-install
-      haskellPackages.Cabal_3_6_3_0
-      audacity-gtk3
-      eww-wayland
-      lollypop
-      easytag
-      gnome.gnome-control-center
-      parted
-      gparted
-      gnome.file-roller
+#      (haskellPackages.ghcWithPackages (pkgs: [ pkgs.random]))
+#      ghcid
+#      ghc_filesystem
+   #   audacity
+   #   lollypop
+     # file-roller
       gnumake
       gcc
-      xine-lib
-      (let
-    my-python-packages = python-packages: with python-packages; [
-      pillow
-      pip
-      pipBuildHook
-      pipInstallHook
-      pandas
-      backports_csv
-      wineWowPackages.fonts
-      noto-fonts-cjk
+      #xine-lib
+    #   (let
+    # my-python-packages = python-packages: with python-packages; [
+    #   pillow
+    #   pip
+    #   pipBuildHook
+    #   pipInstallHook
+    #   pandas
+    #   matplotlib
+      #wineWowPackages.fonts
+      noto-fonts-cjk-sans
       corefonts
-      vistafonts
-      ipafont
       font-manager
-      python-lsp-server
+  #     python-lsp-server
+  #     jupyter
 
-       #other python packages you want
-    ];
-    python-with-my-packages = python3.withPackages my-python-packages;
-  in
-  python-with-my-packages)
-      xf86_input_wacom
-      libwacom
-      zeroadPackages.zeroad-unwrapped
-      zeroadPackages.zeroad-data
-      libnotify
-      ipafont
-      ipaexfont
-      noto-fonts-cjk
-      hanazono
-      libsForQt5.ark
-      rar
-      superTuxKart
-      tree
-      gst_all_1.gstreamer
-      gst_all_1.gst-vaapi
-      libgudev
-      speex
-      xorg.xset
-      neofetch
-      gnome.gnome-weather
-      xdg-utils
-      arduino
-      arduino-core
-      arduino-mk
-      arduino-cli
-      evolution
+  #      #other python packages you want
+  #   ];
+  #   python-with-my-packages = python3.withPackages my-python-packages;
+  # in
+  # python-with-my-packages)
+     #  xf86_input_wacom
+     #  libwacom
+     #  libnotify
+     #  ipafont
+     #  ipaexfont
+     #  hanazono
+     #  libsForQt5.ark
+     # # superTuxKart
+     #  tree
+     #  gst_all_1.gstreamer
+     #  gst_all_1.gst-vaapi
+     #  libgudev
+     #  speex
+     #  neofetch
+     #  xdg-utils
+     #  arduino
+     #  arduino-core
+     #  arduino-mk
+     #  arduino-cli
     ];
   };
-
-  # nixpkgs.overlays = [
-  #   (self: super: {
-  #    discord = super.discord.override {
-  #       commandLineArgs =
-  #         "--enable-features=UseOzonePlatform --ozone-platform=wayland";
-  #     };
-  #   })
-  # ];
-
 
   xdg = {
     mime = {
@@ -369,16 +358,21 @@ in
       };
     };
     portal = {
+      config = {
+        common = {
+          default = [
+            "wlr"
+          ];
+        };
+      };
       extraPortals = with pkgs; [
         xdg-desktop-portal-wlr
-        xdg-desktop-portal-gtk
       ];
-      gtkUsePortal = true;
       wlr = {
         enable = true;
         settings = {
            screencast = {
-             output_name = "DP-1";
+             output_name = "eDP-1";
              max_fps = 30;
              exec_before = "disable_notifications.sh";
              exec_after = "enable_notifications.sh";
@@ -390,29 +384,44 @@ in
   };
   };
 
-
-  qt5 = {
+  qt = {
     enable = true;
     platformTheme = "gnome";
     style = "adwaita-dark";
     };
 
-  system.stateVersion = "22.05"; 
-
+  system.stateVersion = "24.05"; 
 
 ### HOME MANAGER
 
 
-  home-manager.users.neil = {pkgs, ...}: {
-    home.packages = [
-    ];
-    nixpkgs.config.allowUnfree = true;
+  home-manager.users.neil =
+    let
+## COLOURS
+      mainC = "232634";
+      LmainC = "303446";
+      MLmainC = "3a3e4f";
+      LLmainC = "404455";
+      ULmainC = "4f5262";
+      LborderC = "484c5c";
+      DborderC = "1b1e2b";
+      accentC = "8caaee";
+      textC = "ffffff";
 
-  nixpkgs.overlays = [
-    (import (builtins.fetchTarball {
-      url = https://github.com/nix-community/emacs-overlay/archive/master.tar.gz;
-    }))
-  ];
+    in {pkgs, ...}: {
+    nixpkgs = {
+        config = {
+          packageOverrides = pkgs: { nur = import (builtins.fetchTarball "https://github.com/nix-community/NUR/archive/master.tar.gz") {inherit pkgs;};};
+          allowUnfree = true;
+          allowBroken = true;
+          permittedInsecurePackages = [
+            "nix-2.15.3"
+          ];
+        };
+      };
+
+    home.stateVersion = "24.05";
+
 
 ## XDG
     xdg = {
@@ -427,22 +436,22 @@ in
   
 ## THEMES
     gtk.enable = true;
-    gtk.iconTheme.package = pkgs.flat-remix-icon-theme;
-    gtk.iconTheme.name = "Flat-Remix-Green-Dark";
-    gtk.theme.package = pkgs.amarena-theme;
-    gtk.theme.name = "amarena";
+    gtk.iconTheme.package = pkgs.kora-icon-theme;
+    gtk.iconTheme.name = "kora";
+    gtk.theme.package = pkgs.catppuccin-gtk;
+    gtk.theme.name = "catppuccin-frappe-blue-standard";
     home.pointerCursor = {
       package = pkgs.bibata-cursors-translucent;
       gtk.enable = true;
       name = "Bibata_Ghost";
-      size = 36;
+      size = 22;
       x11.enable = true;
     };
 
 ## EMACS
     programs.emacs = {
-      enable = true;
-      package = pkgs.emacsPgtkNativeComp;
+      enable = false;
+      package = pkgs.emacs29-pgtk;
       extraPackages = epkgs: [
 epkgs.use-package
 epkgs.ssh
@@ -464,11 +473,14 @@ epkgs.auto-sudoedit
 epkgs.arduino-mode
 epkgs.arduino-cli-mode
 epkgs.company
+epkgs.company-racer
+epkgs.flycheck
+epkgs.flycheck-rust
+epkgs.rust-mode
 # epkgs.irony
 # epkgs.company-irony
 # epkgs.company-c-headers
 epkgs.spinner
-epkgs.lsp-mode
 epkgs.haskell-mode
 epkgs.python-mode
 epkgs.typescript-mode
@@ -533,7 +545,7 @@ epkgs.org-roam
 (use-package all-the-icons)
 
 (use-package doom-themes
-  :init (load-theme 'doom-city-lights t))
+  :init (load-theme 'doom-palenight t))
 
 (use-package rainbow-delimiters
   :hook (prog-mode . rainbow-delimiters-mode))
@@ -550,7 +562,21 @@ epkgs.org-roam
 
 (use-package company
   :init
-  (company-mode 1))
+  (global-company-mode 1))
+
+(setq company-idle-delay 0.2)
+
+(setq company-minimum-prefix-length 1)
+
+(setq racer-cmd "/run/current-system/sw/bin/racer")
+(setq racer-rust-src-path "/nix/store/j4iyf93342vhp8dhlpdrllwlargk1s93-rust-src/library")
+(add-to-list 'auto-mode-alist '("\.rs\'" . rust-mode))
+(add-hook 'racer-mode-hook #'company-mode)
+(add-hook 'rust-mode-hook #'racer-mode)
+(add-hook 'racer-mode-hook #'eldoc-mode)
+(add-hook 'racer-mode-hook #'company-mode)
+(global-set-key (kbd "TAB") #'company-indent-or-complete-common) ;
+(setq company-tooltip-align-annotations t)
 
 (use-package auto-sudoedit
   :init
@@ -634,17 +660,27 @@ epkgs.org-roam
         '';
     };
 
-services.emacs = {
-  enable = true;
-  client = {
-    enable = true;
-    arguments = [ "-c" ];
-  };
-};
+   services = {
+      emacs = {
+        enable = true;
+        client = {
+          enable = true;
+          arguments = [ "-c" ];
+        };
+      };
+   };
+
+
 ## FIREFOX
     programs.firefox = {
-      enable = true;
+      enable = false;
       profiles.nixos = {
+        extensions = with pkgs.nur.repos.rycee.firefox-addons; [
+          enhancer-for-youtube
+          ublock-origin
+          translate-web-pages
+          search-by-image
+        ];
         bookmarks = {};
         extraConfig = "";
         id = 0;
@@ -666,7 +702,8 @@ services.emacs = {
         };
         userChrome = ''
 :root {
-  --navbarWidth     : 540px; /* Set width of navbar. Use px for a fixed width or vw for a percentage of your window. */
+  --navbarWidth     : 40vw; /* Set width of navbar. Use px for a fixed width or vw for a percentage of your window. */
+
   --animationSpeed  : 0.15s;
 }
 #back-button[disabled="true"] { display: none !important }
@@ -688,7 +725,7 @@ services.emacs = {
   --tab-border-radius: 0 !important;
 }
 #context-navigation:not([hidden]) {
-  padding: 0 0 2px !important;
+  padding: 0 0 0px !important;
 }
 toolbarbutton.bookmark-item:not(.subviewbutton) {
   margin: 0 !important;
@@ -699,11 +736,11 @@ toolbarbutton.bookmark-item:not(.subviewbutton) {
   --tab-min-height: 28px !important;
 }
 :root[uidensity="compact"] #nav-bar {
-  margin-top  : -28px !important;
+  margin-top  : -40px !important;
   height      : 28px !important;
 }
 :root:not([uidensity="compact"]):not([uidensity="touch"]) #nav-bar {
-  margin-top  : -28px !important;
+  margin-top  : -40px !important;
   height      : 28px !important;
 }
 :root[uidensity="touch"] #nav-bar {
@@ -711,7 +748,8 @@ toolbarbutton.bookmark-item:not(.subviewbutton) {
   height      : 49px !important;
 }
 :root[sizemode="maximized"] #TabsToolbar {
-  margin-top: 1px;
+  margin-top: 0px;
+  background: transparent !important;
 }
 #TabsToolbar {
   margin-top: 0px;
@@ -727,9 +765,9 @@ toolbarbutton.bookmark-item:not(.subviewbutton) {
   display     : none !important;
 }
 .tabbrowser-tab {
-  min-height: 28px !important;
+  min-height: 20px !important;
 }
-#TabsToolbar { height: 28px !important; }
+#TabsToolbar { height: 20px !important; }
 
 #urlbar-background {
   border      : none !important;
@@ -740,6 +778,15 @@ toolbarbutton.bookmark-item:not(.subviewbutton) {
 }
 .tabbrowser-tab .tab-close-button {
   visibility: collapse !important;
+}
+.tab-text,
+.tab-label,
+.tab-throbber,
+.tab-sharing-icon-overlay,
+.tab-icon-overlay,
+.tab-icon-sound,
+.tab-icon-image {
+  margin-top  : -10px !important;
 }
 .urlbar-icon, #userContext-indicator, #userContext-label {
   fill        : transparent !important;
@@ -757,6 +804,7 @@ toolbarbutton,
 #urlbar-background,
 .urlbar-icon,
 #userContext-indicator,
+
 #userContext-label,
 .urlbar-input-box,
 #identity-box,
@@ -780,105 +828,106 @@ tab[visuallyselected] .tab-background::before,
 
 ## SWAY
     wayland.windowManager.sway = {
-      enable = true;
+      checkConfig = false;
+      enable = false;
       swaynag.enable = true;
+      extraConfig = ''
+bindgesture swipe:right workspace next 
+bindgesture swipe:left workspace prev 
+'';
       config = {
+        fonts = {
+          names = [ "pango:FuraCode Nerd Font"];
+          size = 11.0;
+        };
+        output = {
+            "eDP-1" = {
+              mode = "2560x1600@60hz";
+              background = "/home/neil/Pictures/wp7.png fill";
+          };       
+        };
         colors = {
-          focused = { background = "526170"; border = "152a1f"; childBorder = "94cf95"; indicator = "2e9ef4"; text = "eeeeec"; };
-          focusedInactive = { background = "394450"; border = "151a1f"; childBorder = "4a515f"; indicator = "484e50"; text = "eeeeec"; };
-          unfocused = { background = "242d35"; border = "151a1f"; childBorder = "13161d"; indicator = "292d2e"; text = "eeeeec"; };
+          focused = { background = ULmainC; border = DborderC; childBorder = accentC; indicator = accentC; text = textC; };
+          focusedInactive = { background = LLmainC; border = DborderC; childBorder = LborderC; indicator = accentC; text = textC; };
+          unfocused = { background = LmainC; border = DborderC; childBorder = DborderC; indicator = accentC; text = textC; };
         };
         gaps.smartBorders = "on";
         window = {
+          titlebar = false;
           hideEdgeBorders = "both";
         };
         input = {
-          "9610:42:BY_Tech_Usb_Gaming_Keyboard" = {
-            xkb_options = "ctrl:swapcaps";
+          "*" = {
+            xkb_layout = "custom";
+            xkb_options = "ctrl:hyper_capscontrol,shift:both_capslock";
           };
           "*" = { accel_profile = "flat"; };
          "1386:890:Wacom_One_by_Wacom_S_Pen" = {
            events = "enabled";
-           map_to_output = "DP-1";
+           map_to_output = "eDP-1";
           };
-         "0:0:OpenTabletDriver_Virtual_Tablet" = {
+         "0:0:OpenTabletDriver_Virtual_Artist_Tablet" = {
             events = "enabled";
-            map_to_output = "DP-3";
-          };
+         };
+         "1452:641:Apple_Internal_Keyboard_/_Trackpad" = {
+           events = "enabled";
+           click_method = "clickfinger";
+           scroll_factor = "0.75";
+           scroll_method = "two_finger";
+           tap = "enabled";
+           tap_button_map = "lrm";
+         };
+           
         };
-        seat = { seat0 = { xcursor_theme = "Bibata_Ghost 36"; }; };
-        output = {
-          HDMI-A-1 = {
-            res = "2560x1440@144hz";
-            position = "4000,510";
-            adaptive_sync = "on";
-            bg = "~/Pictures/suikavertical1.jpg fill";
-            transform = "90";
-          };
-          DP-1 = {
-            res = "2560x1440@144hz";
-            position = "1440,0";
-            adaptive_sync = "on";
-            bg = "~/Pictures/touhou.jpg fill";
-            transform = "180";
-          };
-          DP-2 = {
-            res = "2560x1440@144hz";
-            position = "0,450";
-            adaptive_sync = "on";
-            bg = "~/Pictures/raymoo.jpg fill";
-            transform = "270";
-          };
-          DP-3 = {
-            res = "2560x1440@144hz";
-            position = "1440,1440";
-            adaptive_sync = "on";
-            bg = "~/Pictures/suika.png fill";
-            transform = "0";
-          };
-        };
-        workspaceOutputAssign = [
-          { output = "DP-1"; workspace = "U1";}
-          { output = "DP-1"; workspace = "U2";}
-          { output = "DP-1"; workspace = "U3";}
-          { output = "DP-2"; workspace = "L1";}
-          { output = "DP-2"; workspace = "L2";}
-          { output = "DP-2"; workspace = "L3";}
-          { output = "DP-3"; workspace = "D1";}
-          { output = "DP-3"; workspace = "D2";}
-          { output = "DP-3"; workspace = "D3";}
-          { output = "HDMI-A-1"; workspace = "R1";}
-          { output = "HDMI-A-1"; workspace = "R2";}
-          { output = "HDMI-A-1"; workspace = "R3";}
-        ];
-        bars = [
-        #   {command = "\${pkgs.waybar}/bin/waybar";}
-        #   {mode = "dock";}
-        #   {position = "top";}
-        ];
-        modifier = "Mod4";
+        seat = { seat0 = { xcursor_theme = "Bibata_Ghost 28"; }; };
+        modifier = "Mod5";
         menu = "${pkgs.rofi-wayland}/bin/rofi";
-        terminal = "${pkgs.alacritty}/bin/alacritty";
+        terminal = "/home/neil/.nix-profile/bin/footclient";
         startup = [
             { command = "${pkgs.polkit_gnome}/libexec/polkit-gnome-authentication-agent-1";}
-            { command = "${pkgs.eww-wayland}/bin/eww daemon";}
-            { command = "${pkgs.eww-wayland}/bin/eww open statusbar";}
-            { command = "${pkgs.swaylock}/bin/swaylock -i ~/Pictures/wp4.jpg";}
-            { command = "${pkgs.sway}/bin/swaymsg 'workspace R1; exec ${pkgs.discord}/bin/discord --enable-features=UseOzonePlatform --ozone-platform=wayland; workspace L1'";}
+           # { command = "${pkgs.swaylock}/bin/swaylock -i ";}
             { command = "${pkgs.mako}/bin/mako";}
+            { command = "${pkgs.waybar}/bin/waybar";}
+           # { command = "${unstable.swaycons}/bin/swaycons";}
                  ];
         down = "j";
         up = "k";
         left = "h";
         right = "l";
-
+        bars = [];
+        modes = {
+          lockme = {
+            "Mod4+Alt+n" = "mode default";
+          };
+        };
         keybindings =
           let
-            mod = "mod4";
+            mod = "Mod5";
             launcher = "${pkgs.rofi-wayland}/bin/rofi";
           in {
-            "${mod}+x+Up" = "workspace next";
-            "${mod}+Return" = "exec ${pkgs.alacritty}/bin/alacritty";
+            "Mod4+Alt+n" = "mode lockme";
+            "${mod}+1" = "workspace 1";
+            "${mod}+2" = "workspace 2";
+            "${mod}+3" = "workspace 3";
+            "${mod}+4" = "workspace 4";
+            "${mod}+5" = "workspace 5";
+            "${mod}+6" = "workspace 6";
+            "${mod}+7" = "workspace 7";
+            "${mod}+8" = "workspace 8";
+            "${mod}+9" = "workspace 9";
+            "${mod}+shift+1" = "move to workspace 1";
+            "${mod}+shift+2" = "move to workspace 2";
+            "${mod}+shift+3" = "move to workspace 3";
+            "${mod}+shift+4" = "move to workspace 4";
+            "${mod}+shift+5" = "move to workspace 5";
+            "${mod}+shift+6" = "move to workspace 6";
+            "${mod}+shift+7" = "move to workspace 7";
+            "${mod}+shift+8" = "move to workspace 8";
+            "${mod}+shift+9" = "move to workspace 9";
+            "${mod}+Mod4+Up" = "workspace next";
+            "${mod}+Mod4+Down" = "workspace prev";
+            "Mod4+z" = "exec echo key control+z | dotool";
+            "${mod}+Return" = "exec /home/neil/.nix-profile/bin/footclient";
             "${mod}+Shift+q" = "kill";
             "${mod}+d" = "exec ${launcher} -show drun";
             "${mod}+Shift+c" = "reload";
@@ -898,47 +947,6 @@ tab[visuallyselected] .tab-background::before,
             "${mod}+Shift+j" = "move down";
             "${mod}+Shift+Right" = "move right";
             "${mod}+Shift+l" = "move right";
-            "${mod}+Alt+Left" = "workspace L1";
-            "${mod}+Alt+h" = "workspace L1";
-            "${mod}+Alt+Down" = "workspace D1";
-            "${mod}+Alt+j" = "workspace D1";
-            "${mod}+Alt+Up" = "workspace U1";
-            "${mod}+Alt+k" = "workspace U1";
-            "${mod}+Alt+Right" = "workspace R1";
-            "${mod}+Alt+l" = "workspace R1";
-            "${mod}+Alt+Shift+Left" = "move container to workspace L1";
-            "${mod}+Alt+Shift+h" = "move container to workspace L1";
-            "${mod}+Alt+Shift+Down" = "move container to workspace D1";
-            "${mod}+Alt+Shift+j" = "move container to workspace D1";
-            "${mod}+Alt+Shift+Up" = "move container to workspace U1";
-            "${mod}+Alt+Shift+k" = "move container to workspace U1";
-            "${mod}+Alt+Shift+Right" = "move container to workspace R1";
-            "${mod}+Alt+Shift+l" = "move container to workspace R1";
-            "${mod}+Delete+Insert" = "workspace L1";
-            "${mod}+Alt+F1" = "workspace L1";
-            "${mod}+Alt+F5" = "workspace L2";
-            "${mod}+Alt+F9" = "workspace L3";
-            "${mod}+Alt+F3" = "workspace U1";
-            "${mod}+Alt+F7" = "workspace U2";
-            "${mod}+Alt+F11" = "workspace U3";
-            "${mod}+Alt+F2" = "workspace D1";
-            "${mod}+Alt+F6" = "workspace D2";
-            "${mod}+Alt+F10" = "workspace D3";
-            "${mod}+Alt+F4" = "workspace R1";
-            "${mod}+Alt+F8" = "workspace R2";
-            "${mod}+Alt+F12" = "workspace R3";
-            "${mod}+Alt+Shift+F1" = "move container to workspace L1";
-            "${mod}+Alt+Shift+F5" = "move container to workspace L2";
-            "${mod}+Alt+Shift+F9" = "move container to workspace L3";
-            "${mod}+Alt+Shift+F3" = "move container to workspace U1";
-            "${mod}+Alt+Shift+F7" = "move container to workspace U2";
-            "${mod}+Alt+Shift+F11" = "move container to workspace U3";
-            "${mod}+Alt+Shift+F2" = "move container to workspace D1";
-            "${mod}+Alt+Shift+F6" = "move container to workspace D2";
-            "${mod}+Alt+Shift+F10" = "move container to workspace D3";
-            "${mod}+Alt+Shift+F4" = "move container to workspace R1";
-            "${mod}+Alt+Shift+F8" = "move container to workspace R2";
-            "${mod}+Alt+Shift+F12" = "move container to workspace R3";
             "${mod}+b" = "splith";
             "${mod}+v" = "splitv";
             "${mod}+s" = "layout stacking";
@@ -952,161 +960,448 @@ tab[visuallyselected] .tab-background::before,
             "${mod}+ctrl+e" = "exec emacsclient -c ";
             "${mod}+ctrl+f" = "exec ${pkgs.firefox}/bin/firefox";
             "${mod}+ctrl+s" = "exec ${pkgs.xfce.thunar}/bin/thunar";
-            "Alt+1" = "exec ${pkgs.playerctl}/bin/playerctl play-pause";
-            "Alt+2" = "exec ${pkgs.playerctl}/bin/playerctl previous";
-            "Alt+3" = "exec ${pkgs.playerctl}/bin/playerctl next";
+            "Mod4+1" = "exec ${pkgs.playerctl}/bin/playerctl play-pause";
+            "XF86AudioPlay" = "exec ${pkgs.playerctl}/bin/playerctl play-pause";
+            "Mod4+2" = "exec ${pkgs.playerctl}/bin/playerctl previous";
+            "XF86AudioPrev" = "exec ${pkgs.playerctl}/bin/playerctl previous";
+            "Mod4+3" = "exec ${pkgs.playerctl}/bin/playerctl next";
+            "XF86AudioNext" = "exec ${pkgs.playerctl}/bin/playerctl next";
             "XF86AudioRaiseVolume" = "exec ${pkgs.alsa-utils}/bin/amixer -q sset Master 3%+";
             "XF86AudioLowerVolume" = "exec ${pkgs.alsa-utils}/bin/amixer -q sset Master 3%-";
             "XF86AudioMute" = "exec ${pkgs.alsa-utils}/bin/amixer -q sset Master togglemute";
             "XF86AudioMicMute" = "exec ${pkgs.alsa-utils}/bin/amixer -q sset Capture togglemute";
-            "XF86MonBrightnessUp" = "exec ${pkgs.brightnessctl}/bin/brightnessctl set +10";
-            "XF86MonBrightnessDown" = "exec ${pkgs.brightnessctl}/bin/brightnessctl set -10";
-            "--release print" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot save screen $HOME/Pictures/Screenshots/screenshot-$(${pkgs.coreutils}/bin/date +%B_%d_%Y_at_%H:%M:%S).png";
-            "--release ${mod}+print" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot save active $HOME/Pictures/Screenshots/screenshotWindow-$(${pkgs.coreutils}/bin/date +%B_%d_%Y_at_%H:%M:%S).png";
-            "--release shift+print" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot save area $HOME/Pictures/Screenshots/screenshotArea-$(${pkgs.coreutils}/bin/date +%B_%d_%Y_at_%H:%M:%S).png";
-            "--release ctrl+shift+print" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot copy area";
-            "--release ctrl+${mod}+print" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot copy active";
-            "--release ctrl+print" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot copy screen";
+            "Mod4+XF86MonBrightnessUp" = "exec ${pkgs.brightnessctl}/bin/brightnessctl set +10%";
+            "Mod4+XF86MonBrightnessDown" = "exec ${pkgs.brightnessctl}/bin/brightnessctl set 10%-";
+            "--release XF86LaunchA" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot save screen $HOME/Pictures/Screenshots/screenshot-$(${pkgs.coreutils}/bin/date +%B_%d_%Y_at_%H:%M:%S).png";
+            "--release ${mod}+XF86LaunchA" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot save active $HOME/Pictures/Screenshots/screenshotWindow-$(${pkgs.coreutils}/bin/date +%B_%d_%Y_at_%H:%M:%S).png";
+            "--release shift+XF86LaunchA" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot save area $HOME/Pictures/Screenshots/screenshotArea-$(${pkgs.coreutils}/bin/date +%B_%d_%Y_at_%H:%M:%S).png";
+            "--release ctrl+shift+XF86LaunchA" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot copy area";
+            "--release ctrl+${mod}+XF86LaunchA" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot copy active";
+            "--release ctrl+XF86LaunchA" = "exec ${pkgs.sway-contrib.grimshot}/bin/grimshot copy screen";
           };
       };
     };
 
 ## MAKO
-    programs.mako = {
+    services.mako = {
       enable = true;
       actions = true;
       anchor = "top-right";
-      backgroundColor = "#242d35";
-      borderColor = "#94cf95";
+      backgroundColor = "#${LmainC}";
+      borderColor = "#${accentC}";
       borderRadius = 0;
       borderSize= 3;
       #font =
       icons = true;
-      output = "DP-3";
+      output = "eP-1";
       extraConfig = "icon-location=right\ntext-alignment=center";
     };
 
 ## ALACRITTY
-    programs.alacritty = {
-      enable = true;
-      package = pkgs.alacritty;
-      settings = {
-        opacity = 0.7;
-        primary = {
-          background = "#000000";
-          foreground = "CBCCC6";
-        };
-        normal = {
-          black = "#191E2A";
-          red = "#FF3333";
-          green = "#BAE67E";
-          yellow = "#FFA759";
-          blue = "#73D0FF";
-          magenta = "#FFD580";
-          cyan = "#95E6CB";
-          white = "#C7C7C7";
-        };
-        bright = {
-          black = "#686868";
-          red = "#F27983";
-          green = "#A6CC70";
-          yellow = "#FFCC66";
-          blue = "#5CCFE6";
-          magenta = "#FFEE99";
-          cyan = "#95E6CB";
-          white = "#FFFFFF";
-        };
+    # programs.alacritty = {
+    #   enable = true;
+    #   package = pkgs.alacritty;
+    #   settings = {
+    #     colors = {
+    #     primary = {
+    #         background = "#${mainC}";
+    #         foreground = "#${textC}";
+    #       };
+    #       normal = {
+    #         black = "#191E2A";
+    #         red = "#FF3333";
+    #         green = "#BAE67E";
+    #         yellow = "#FFA759";
+    #         blue = "#73D0FF";
+    #         magenta = "#FFD580";
+    #         cyan = "#95E6CB";
+    #         white = "#C7C7C7";
+    #       };
+    #       bright = {
+    #         black = "#686868";
+    #         red = "#F27983";
+    #         green = "#A6CC70";
+    #         yellow = "#FFCC66";
+    #         blue = "#5CCFE6";
+    #         magenta = "#FFEE99";
+    #         cyan = "#95E6CB";
+    #         white = "#FFFFFF";
+    #       };
+    #     };
 
+    #   };
+    # };
+
+## FOOT
+    programs.foot = {
+      enable = true;
+      server.enable = true;
+      settings = {
+        main = {
+          font = "monospace:size=11";
+        };
+        colors = {
+          background = mainC;
+          foreground = textC;
+        };
       };
     };
     
-## MPD
-  services.mpd = {
-    enable = true;
-    package = pkgs.mpd;
-    musicDirectory = "$HOME/bulk";
-    network = {
-      listenAddress = "any";
-      port = 6600;
-      };
-    };
-
-  services.mpd-discord-rpc = {
-    enable = true;
-    package = pkgs.mpd-discord-rpc;
-    settings = {
-      hosts = [ "localhost:6600" ];
-      format = {
-        details = "$title";
-        state = "On $album by $artist";
-      };
-    };
-  };
-
-
+    
+    
 ## CONFIG FILES
     home.file = {
-      ".config/test/what".text =
+      ".config/xkb/symbols/custom".text =
         ''
-        okay so now i test it moar
-        does this work right?
-            time to pray
-        '';
-
-      ".config/eww/eww.yuck".text =
-        ''
-(defwindow statusbar
-           :monitor 1
-           :geometry (geometry :x "0%"
-                               :y "0px"
-                               :width "100%"
-                               :height "15px"
-                               :anchor "bottom center")
-           :stacking "fg"
-           :exclusive true
-  (main-bar))
-
-  (defwidget main-bar []
-      (date)
-      )
- (defwidget date []
-      (box :class "date"
-           :spacing 10
-           :space-evenly "false"
-           :halign "center"
-        (label :text "''${date}"
-               :class "time")))
-(defwidget sound []
-   (box))
-  (defpoll date :interval "1s"
-    "date +'%a,  %b  %d  %H:%M:%S'")
-         '';
-      ".config/eww/eww.scss".text = "";
-      ".local/share/applications/discord.desktop".text =
-''
-[Desktop Entry]
-Categories=Network;InstantMessaging
-Exec=${pkgs.discord}/bin/discord #--enable-features=UseOzonePlatform --ozone-platform=wayland
-GenericName=All-in-one cross-platform voice and text chat for gamers
-Icon=discord
-MimeType=x-scheme-handler/discord
-Name=Discord
-Type=Application
-Version=1.4
+xkb_symbols "basic" {
+    include "us"
+    name[Group1]= "English (US Custom)";
+    key <CAPS> { [ Hyper_L ] };
+    modifier_map Mod4 { Hyper_L };
+    key <LWIN> { [ Meta_L ] };
+    modifier_map Mod5 { Super_L };
+    key <LALT> { [ Super_L ] };
+};
 '';
-#       ".config/rclone/rclone.conf".text =
+
+      ".config/OpenTabletDriver/settingsold.json".text =
+        ''
+{
+  "Profiles": [
+    {
+      "Tablet": "Wacom CTL-472",
+      "OutputMode": {
+        "Path": "OpenTabletDriver.Desktop.Output.LinuxArtistMode",
+        "Settings": [],
+        "Enable": true
+      },
+      "Filters": [],
+      "AbsoluteModeSettings": {
+        "Display": {
+          "Width": 1280.0,
+          "Height": 800.0,
+          "X": 640.0,
+          "Y": 400.0,
+          "Rotation": 0.0
+        },
+        "Tablet": {
+          "Width": 152.0,
+          "Height": 95.0,
+          "X": 76.0,
+          "Y": 47.5,
+          "Rotation": 0.0
+        },
+        "EnableClipping": true,
+        "EnableAreaLimiting": false,
+        "LockAspectRatio": false
+      },
+      "RelativeModeSettings": {
+        "XSensitivity": 10.0,
+        "YSensitivity": 10.0,
+        "RelativeRotation": 0.0,
+        "RelativeResetDelay": "00:00:00.1000000"
+      },
+      "Bindings": {
+        "TipActivationThreshold": 0.0,
+        "TipButton": {
+          "Path": "OpenTabletDriver.Desktop.Binding.MouseBinding",
+          "Settings": [
+            {
+              "Property": "Button",
+              "Value": "Left"
+            }
+          ],
+          "Enable": true
+        },
+        "EraserActivationThreshold": 0.0,
+        "EraserButton": null,
+        "PenButtons": [
+          {
+            "Path": "OpenTabletDriver.Desktop.Binding.KeyBinding",
+            "Settings": [
+              {
+                "Property": "Key",
+                "Value": "Space"
+              }
+            ],
+            "Enable": true
+          },
+          {
+            "Path": "OpenTabletDriver.Desktop.Binding.KeyBinding",
+            "Settings": [
+              {
+                "Property": "Key",
+                "Value": "Control+Z"
+              }
+            ],
+            "Enable": true
+          }
+        ],
+        "AuxButtons": [],
+        "MouseButtons": [],
+        "MouseScrollUp": null,
+        "MouseScrollDown": null
+      }
+    }
+  ],
+  "LockUsableAreaDisplay": true,
+  "LockUsableAreaTablet": true,
+  "Tools": []
+}
+'';
+# ".local/share/applications/armcord.desktop".text =
 # ''
+# [Desktop Entry]
+# Categories=Network;InstantMessaging
+# Exec=${pkgs.armcord}/bin/armcord --enable-features=UseOzonePlatform --ozone-platform=wayland
+# GenericName=All-in-one cross-platform voice and text chat for gamers
+# Icon=discord
+# MimeType=x-scheme-handler/discord
+# Name=Armcord
+# Type=Application
+# '';
+
+      ".config/legcord/themes/myNix/manifest.json".text =
+''
+{"theme":"src.css","name":"myNix","author":"Nyria#3863","description":"Declaratively Defined Discord Theming","supportsArmCordTitlebar":false}
+'';
+
+      ".config/legcord/themes/myNix/src.css".text =
+''
+/**
+* @name myNix
+*/
+:root {
+}
+.theme-dark {
+  --background-primary: #${MLmainC};
+  --background-secondary: #${LmainC};
+  --background-secondary-alt: #${MLmainC};
+  --background-tertiary: #${mainC};
+  --background-accent: #${accentC};
+
+  --modal-background: #23283d;
+  --background-mobile-primary: #23283d;
+  --background-mobile-secondary: #${LmainC};
+  --channeltextarea-background: #${LmainC};
+  --background-message-hover: transparent;
+  --background-modifier-hover: #00000010;
+  --background-modifier-active: #0000001a;
+  --background-modifier-selected: #0000001f;
+  --deprecated-card-bg: #12141f63;
+  --background-floating: #${mainC};
+  --deprecated-quickswitcher-input-background: #${mainC};
+  --elevation-low: none;
+  --scrollbar-auto-thumb: #${mainC};
+  --scrollbar-auto-track: #${LmainC};
+  --scrollbar-thin-thumb: #141925;
+  --activity-card-background: #${mainC};
+  --input-background: #${LmainC};
+}
+'';
+#        ".config/rclone/rclone.conf".text =
+#  ''
 # [remote]
 # type = drive
 # client_id = 1084254172415-3jkv4kfegb2bmrohnpt4kba448rgugra.apps.googleusercontent.com
 # client_secret = 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
 # scope = drive
-# token = {"access_token":"ya29.a0AVA9y1vEUkD6jfP7cyVQbqiQMr0p2DVHoBiwWfVysmW_t0pGLy65Nn34itIrSi5TajUtgBTViI35Pfwpt61AnbCqLM5_91WZZBn_4jz3UmOjT-qEmsvQkk3bTqWmnxN9FBa4ARaIwCsCUOku7F_IRennkwvIPQaCgYKATASAQASFQE65dr8iUgJb7CkEq5VecICtqrzvg0165","token_type":"Bearer","refresh_token":"1//04U0pEKrAYzMzCgYIARAAGAQSNwF-L9IrcV-vjatokLGiJ7LkuNKLQQ5-fJ_BRQa1BYtRVWgw0HtvjpxPdhe6nWInUYWqW5PE40s","expiry":"2022-08-30T13:16:02.93077183-04:00"}
+# token = {"access_token":"ya29.a0AVA9y1v55UumlkqjLzoMiZfS79TAx53jnyjbc-7t1PPJwinInfYuFD8AeIPwfVWqn9LoesWNuUxZQZRHRflnVDK0EjSxDEMSOIpnTuVHYVq7-jeGSV5GaCFYzDpTlv_s9Y6zlGK1HgISAhgiJlhvRatH-kgmJwaCgYKATASAQASFQE65dr8VElsvwlRSPuYKBNWl3kjNA0165","token_type":"Bearer","refresh_token":"1//04U0pEKrAYzMzCgYIARAAGAQSNwF-L9IrcV-vjatokLGiJ7LkuNKLQQ5-fJ_BRQa1BYtRVWgw0HtvjpxPdhe6nWInUYWqW5PE40s","expiry":"2022-08-30T14:46:05.068038276-04:00"}
 # team_drive =
-# '';
-    };
+#  '';
+
+      ".config/waybar/config".text = 
+''
+{
+    "layer": "top",
+    "position": "top",
+    "output": "eDP-1",
+    "height": 20,
+    "modules-left": ["sway/workspaces", "sway/mode", "sway/window"],
+    "modules-center": ["clock"],
+    "modules-right": ["battery", "custom/playerctl", "pulseaudio"],
+    "sway/window": {
+        "max-length": 50
+    },
+    "clock": {
+        "interval": 1,
+        "format": "{:%a, %d. %b  %H:%M:%S}"
+    },
+    "pulseaudio": {
+    "format": "{volume}% {icon}",
+    "format-bluetooth": "{volume}% {icon}",
+    "format-muted": "",
+    "format-icons": {
+        "headphone": "",
+        "hands-free": "",
+        "headset": "",
+        "phone": "",
+        "portable": "",
+        "car": "",
+        "default": ["", ""]
+    },
+    "scroll-step": 1,
+    "on-click": "pavucontrol"
+    },
+      "custom/weather": {
+    "exec": "curl 'https://wttr.in/?format=1'",
+    "interval": 3600
+    },
+}
+'';
+       ".config/waybar/style.css".text = 
+''
+* {
+    border: none;
+    border-radius: 0;
+    /* `otf-font-awesome` is required to be installed for icons */
+    font-family: Inconsolata;
+    font-size: 14px;
+    min-height: 0;
+}
+
+window#waybar {
+    background-color: rgba(43, 48, 59, 0.5);
+    border-bottom: 0px solid rgba(100, 114, 125, 0.5);
+    color: #ffffff;
+    transition-property: background-color;
+    transition-duration: .5s;
+}
+
+window#waybar.hidden {
+    opacity: 0.2;
+}
+
+/*
+window#waybar.empty {
+    background-color: transparent;
+}
+window#waybar.solo {
+    background-color: #FFFFFF;
+}
+*/
+
+window#waybar.termite {
+    background-color: #3F3F3F;
+}
+
+window#waybar.chromium {
+    background-color: #000000;
+    border: none;
+}
+
+#workspaces button {
+    padding: 0 5px;
+    background-color: transparent;
+    color: #ffffff;
+    /* Use box-shadow instead of border so the text isn't offset */
+    box-shadow: inset 0 -3px transparent;
+}
+
+/* https://github.com/Alexays/Waybar/wiki/FAQ#the-workspace-buttons-have-a-strange-hover-effect */
+#workspaces button:hover {
+    background: rgba(0, 0, 0, 0.2);
+    box-shadow: inset 0 -3px #ffffff;
+}
+
+#workspaces button.focused {
+    background-color: #64727D;
+    box-shadow: inset 0 -3px #ffffff;
+}
+
+#workspaces button.urgent {
+    background-color: #eb4d4b;
+}
+
+#mode {
+    background-color: #64727D;
+    border-bottom: 3px solid #ffffff;
+}
+
+#clock,
+#battery,
+#temperature,
+#backlight,
+#network,
+#pulseaudio,
+
+#window,
+#workspaces {
+    margin: 0 4px;
+}
+
+/* If workspaces is the leftmost module, omit left margin */
+.modules-left > widget:first-child > #workspaces {
+    margin-left: 0;
+}
+
+/* If workspaces is the rightmost module, omit right margin */
+.modules-right > widget:last-child > #workspaces {
+    margin-right: 0;
+}
+
+#clock {
+    background-color: #0d1117;
+    opacity: 0.9;
+}
+
+#battery {
+    background-color: #ffffff;
+    color: #000000;
+    opacity: 0.5;
+}
+
+#battery.charging, #battery.plugged {
+    color: #ffffff;
+    background-color: #26A65B;
+}
+
+@keyframes blink {
+    to {
+        background-color: #ffffff;
+        color: #000000;
+    }
+}
+
+#battery.critical:not(.charging) {
+    background-color: #f53c3c;
+    color: #ffffff;
+    animation-name: blink;
+    animation-duration: 0.5s;
+    animation-timing-function: linear;
+    animation-iteration-count: infinite;
+    animation-direction: alternate;
+}
+
+label:focus {
+    background-color: #000000;
+}
+
+#backlight {
+    background-color: #90b1b1;
+}
+
+#network {
+    background-color: #2980b9;
+}
+
+#network.disconnected {
+    background-color: #f53c3c;
+}
+
+#pulseaudio {
+    background-color: #f1c40f;
+    color: #000000;
+}
+
+#pulseaudio.muted {
+    background-color: #90b1b1;
+    color: #2a5c45;
+}
+
+
+'';
   };
 
-
-
+};
 }
